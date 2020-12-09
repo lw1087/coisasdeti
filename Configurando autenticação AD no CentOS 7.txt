@@ -1,0 +1,46 @@
+Configurando autenticação AD no CentOS 7
+yum install -y nss-pam-ldapd nscd
+
+## authconfig-tui
+Use LDAP
+Use Shadow Passwords
+Use LDAP Authentication
+Local authorization is sufficient
+
+*NAO MARCAR TLS
+ldaps://servidor.dominio.local
+dc=dominio,dc=local
+
+## authconfig --enablemkhomedir --update
+
+## vi /etc/nslcd.conf
+binddn CN=USUARIOLDAP,OU=Usuarios,DC=dominio,DC=local
+binddn usrldap@dominio.local
+bindpw
+
+
+# CA certificates for server certificate verification
+#tls_cacertdir /etc/ssl/certs
+tls_cacertfile /etc/ssl/ca.cer (e copiar o certificado para essa pasta)
+
+# Mappings for Active Directory
+uncomment all
+
+systemctl restart nslcd
+
+## vi /etc/ssh/sshd_config
+
+...
+#HostKey /etc/ssh/ssh_host_rsa_key
+#HostKey /etc/ssh/ssh_host_dsa_key
+#HostKey /etc/ssh/ssh_host_ecdsa_key
+#HostKey /etc/ssh/ssh_host_ed25519_key
+AllowGroups administradores root
+
+visudo
+## Allow root to run any commands anywhere
+root    ALL=(ALL)       ALL
+%administradores   ALL=(ALL)       NOPASSWD: ALL
+
+## Troubleshoting
+journalctl -xlf

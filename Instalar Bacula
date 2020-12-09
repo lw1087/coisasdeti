@@ -1,0 +1,147 @@
+yum install mt-st mtx
+
+vi /etc/yum.repos.d/MariaDB.repo
+[mariadb]
+name = MariaDB
+baseurl = http://yum.mariadb.org/10.4/centos7-amd64
+gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+gpgcheck=1
+
+echo "[Bacula-Community]
+name=CentOS - Bacula - Community
+baseurl=https://bacula.org/packages/5e622a18b8227/bacula/bacula/rpms/9.6.5/el7/x86_64/
+enabled=1
+protect=0
+gpgcheck=0" > /etc/yum.repos.d/bacula-community.repo
+
+yum update
+yum install MariaDB-server MariaDB-client
+systemctl enable mariadb
+systemctl start mariadb
+
+yum install bacula-mysql
+
+/opt/bacula/scripts/create_mysql_database
+/opt/bacula/scripts/make_mysql_tables
+*Criar usuário e atribuir permissão manualmente
+
+create user 'bacula'@'localhost' identified by '';
+grant all privileges on bacula.* to 'bacula'@'localhost';
+
+mysql_secure_installation
+
+systemctl enable bacula-dir
+systemctl enable bacula-sd
+systemctl enable bacula-fd
+
+# Regras de Firewall
+firewall-cmd --permanent --zone=public --add-port=9101-9103/tcp
+firewall-cmd --reload
+
+## bconsole
+for i in `ls /opt/bacula/bin`; do
+    ln -s /opt/bacula/bin/$i /usr/sbin/$i;
+done
+sed '/[Aa]ddress/s/=s.*/= localhost/g' -i  /opt/bacula/etc/bconsole.conf
+
+# permissão para o bacula usar a tape library
+usermod -a -G tape bacula
+
+chown root:bacula /opt/bacula/etc/bacula-dir-jobs.conf
+chown root:bacula /opt/bacula/etc/bacula-dir-clients.conf
+chown root:bacula /opt/bacula/etc/bacula-dir-filesets.conf
+chown root:bacula /opt/bacula/etc/bacula-dir-agendamento.conf
+chown root:bacula /opt/bacula/etc/bacula-dir.conf 
+chown root:bacula /opt/bacula/etc/bacula-fd.conf 
+chown root:bacula /opt/bacula/etc/bacula-sd.conf
+
+
+### Baculum
+yum -y install policycoreutils-python
+semanage port -a -t http_port_t -p tcp 9096
+semanage port -a -t http_port_t -p tcp 9095
+
+chown -R apache:root /usr/share/baculum/htdocs
+
+
+rpm --import http://bacula.org/downloads/baculum/baculum.pub
+
+echo "
+[baculumrepo]
+name=Baculum CentOS repository
+baseurl=http://bacula.org/downloads/baculum/stable/centos
+gpgcheck=1
+enabled=1" > /etc/yum.repos.d/baculum.repo
+
+yum install baculum-common baculum-api baculum-api-httpd baculum-web baculum-web-httpd
+
+echo "Defaults:apache "'!'"requiretty
+apache  ALL=NOPASSWD:  /usr/sbin/bconsole
+apache  ALL=NOPASSWD:  /usr/sbin/bdirjson
+apache  ALL=NOPASSWD:  /usr/sbin/bsdjson
+apache  ALL=NOPASSWD:  /usr/sbin/bfdjson
+apache  ALL=NOPASSWD:  /usr/sbin/bbconsjson
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl start bacula-dir
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl stop bacula-dir
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl restart bacula-dir
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl start bacula-sd
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl stop bacula-sd
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl restart bacula-sd
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl start bacula-fd
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl stop bacula-fd
+apache ALL=(root) NOPASSWD: /usr/bin/systemctl restart bacula-fd
+" > /etc/sudoers.d/baculum
+
+usermod -aG tape apache
+chown -R apache:bacula /opt/bacula/working /opt/bacula/etc
+chmod -R g+rwx /opt/bacula/working /opt/bacula/etc
+
+firewall-cmd --permanent --zone=public --add-port=9095-9096/tcp
+firewall-cmd --reload
+
+service httpd restart
+systemctl enable httpd
+
+setenforce 0
+
+______________________________________________________________________________________
+
+#rsync -av /var/lib/mysql /mysql-db/
+#mv /var/lib/mysql /var/lib/mysql.bak
+
+vi /etc/my.cnf
+#alteradas linhas:
+datadir=/mysql-db/mysql
+socket=/mysql-db/mysql/mysql.sock
+#e adicionado
+[client]
+port=3306
+socket=/mysql-db/mysql/mysql.sock
+
+yum install bacula-mysql
+# Criar o banco de dados do Bacula com MySQL
+/opt/bacula/scripts/create_mysql_database -uroot -p
+/opt/bacula/scripts/make_mysql_tables -uroot -p
+/opt/bacula/scripts/grant_mysql_privileges -uroot -p
+
+firewall-cmd --permanent --zone=public --add-port=9101-9103/tcp
+firewall-cmd --reload
+
+systemctl enable bacula-fd.service
+systemctl enable bacula-sd.service
+systemctl enable bacula-dir.service
+
+
+http://bacula.org/packages/5e622a18b8227
+
+
+
+
+
+chown root:bacula bacula-dir-jobs.conf
+chown root:bacula bacula-dir-clients.conf
+chown root:bacula bacula-dir-filesets.conf
+chown root:bacula bacula-dir-agendamento.conf
+chown root:bacula bacula-dir.conf 
+chown root:bacula bacula-fd.conf 
+chown root:bacula bacula-sd.conf
